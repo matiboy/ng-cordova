@@ -8,21 +8,44 @@ angular.module('ngCordova.plugins.accountmanager', [])
       defaultAccountType = t;
     }
 
-    this.$get = ['$q', '$cordovaAccountManagerStatus', function ($q, $cordovaAccountManagerStatus) {
+    function accountOrGetAccount(account) {
+      // _index is the only required property in the plugin's getUserData code
+      // If not there, get the account assuming that we were given a name or a callback to identify the account
+      return $q.when(account._index ? account : service.getAccount(null, account));
+    }
+
+    function needsAccountWrapper(pluginFunction, account) {
+      var defer = $q.defer();
+      accountOrGetAccount(account).then(function certainToHaveAccountObject(account) {
+        // MDN advises against slicing arguments
+        var args = [];
+        for(var i=2; i < arguments.length; i++) {
+          args.push(arguments[i]);
+        }
+        // Last argument is going to be our callback
+        args.push(function(err, data) {
+          if(err) {
+            return defer.reject(err);
+          }
+          defer.resolve(data);
+        });
+        window.plugins.accountmanager[pluginFunction].apply(this, args);
+        return defer.promise;
+    }
+
+
+    this.$get = ['$q', function ($q) {
       var service = {
         getAccounts: function (accountType) {
-          var defer = $q.defer(),
-              am = window.plugins.accountmanager;;
-          if(!accountType) {
-            accountType = defaultAccountType;
-          }
-          am.getAccountsByType(accountType, function(error, accounts) {
+          var defer = $q.defer();
+          accountType = accountType || defaultAccountType;
+          window.plugins.accountmanager.getAccountsByType(accountType, function(error, accounts) {
             // This could represent permissions error
             if(error) {
               return defer.reject(error);
             }
             if(!accounts || !accounts.length) {
-              return defer.reject($cordovaAccountManagerStatus.NO_ACCOUNTS_OF_THIS_TYPE);
+              return defer.reject('No account of this type');
             }
             return defer.resolve(accounts);
           });
@@ -47,27 +70,23 @@ angular.module('ngCordova.plugins.accountmanager', [])
               }
             }
             // Failed on all accounts
-            return $q.reject($cordovaAccountManagerStatus.NO_MATCHING_ACCOUNT);
+            return $q.reject('No matching account');
           });
         },
-
-        setForKey: function (key, serviceName, value) {
-          var defer = $q.defer(),
-              kc = new Keychain();
-
-          kc.setForKey(defer.resolve, defer.reject, key, serviceName, value);
-
+        createAccount: function(accountType, name, password, data) {
+          var defer = $q.defer();
+          accountType = accountType || defaultAccountType;
+          window.plugins.accountmanager.addAccountExplicitly(accountType, name, password, data, function(err, newAccount) {
+            if(err) {
+              return defer.reject(err);
+            }
+            defer.resolve(newAccount);
+          });
           return defer.promise;
         },
-
-        removeForKey: function (key, serviceName) {
-          var defer = $q.defer(),
-              kc = new Keychain();
-
-          kc.removeForKey(defer.resolve, defer.reject, key, serviceName);
-
-          return defer.promise;
-        }
+        getUserData: needsAccountWrapper.bind(null, 'getUserData'),
+        setUserData: needsAccountWrapper.bind(null, 'setUserData'),
+        removeAccount: needsAccountWrapper.bind(null, 'removeAccount')
       };
     return service;
     }]
