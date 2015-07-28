@@ -1,4 +1,5 @@
 angular.module('ngCordova.plugins', [
+  'ngCordova.plugins.accountmanager',
   'ngCordova.plugins.actionSheet',
   'ngCordova.plugins.adMob',
   'ngCordova.plugins.appAvailability',
