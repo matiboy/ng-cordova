@@ -8,15 +8,16 @@ angular.module('ngCordova.plugins.accountmanager', [])
       defaultAccountType = t;
     }
 
-    function accountOrGetAccount(account) {
-      // _index is the only required property in the plugin's getUserData code
-      // If not there, get the account assuming that we were given a name or a callback to identify the account
-      return $q.when(account._index ? account : service.getAccount(null, account));
-    }
+    this.$get = ['$q', function ($q) {
+      function accountOrGetAccount(account) {
+        // _index is the only required property in the plugin's getUserData code
+        // If not there, get the account assuming that we were given a name or a callback to identify the account
+        return $q.when(angular.isDefined(account._index) ? account : service.getAccount(null, account));
+      }
 
-    function needsAccountWrapper(pluginFunction, account) {
-      var defer = $q.defer();
-      accountOrGetAccount(account).then(function certainToHaveAccountObject(account) {
+      function needsAccountWrapper(pluginFunction, account) {
+        var defer = $q.defer();
+        // Keep all arguments except function name and account - which at this stage isn't necessarily an account object
         // MDN advises against slicing arguments
         var args = [];
         for(var i=2; i < arguments.length; i++) {
@@ -29,12 +30,13 @@ angular.module('ngCordova.plugins.accountmanager', [])
           }
           defer.resolve(data);
         });
-        window.plugins.accountmanager[pluginFunction].apply(this, args);
+        accountOrGetAccount(account).then(function certainToHaveAccountObject(account) {
+          args.unshift(account);
+          window.plugins.accountmanager[pluginFunction].apply(this, args);
+        });
         return defer.promise;
-    }
+      }
 
-
-    this.$get = ['$q', function ($q) {
       var service = {
         getAccounts: function (accountType) {
           var defer = $q.defer();
@@ -63,9 +65,9 @@ angular.module('ngCordova.plugins.accountmanager', [])
             var checkCallback = typeof(nameOrCallback === 'function') ? nameOrCallback : function(account) {
               return account.name === nameOrCallback;
             }
-            for(var i in accounts) {
+            for(var i=0; i < accounts.length; i++) {
               var account = accounts[i];
-              if(checkCallback(account)) {
+              if(checkCallback(account, i)) {
                 return account;
               }
             }
